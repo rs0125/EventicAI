@@ -8,108 +8,62 @@ using UnityEngine.Networking;
 using TMPro;
 using Newtonsoft.Json;
 
-// Helper classes to deserialize the full backend response
-
 public class VRMicRecorder : MonoBehaviour
 {
     [Header("Mic Settings")]
-    public MicController micController; // Reference to your MicController script
-    public TextMeshProUGUI statusText;  // UI Text element to update
-    public EventDispatcher eventDispatcher; // Reference to the EventDispatcher to process responses
+    public MicController micController;
+    public TextMeshProUGUI statusText;
+    public EventDispatcher eventDispatcher;
 
     private InputDevice rightController;
     private bool isRecording = false;
     private bool buttonPressed = false;
-    
-    // The endpoint URL provided in the prompt
+
+    [Header("UI Button")]
+    public TextMeshProUGUI buttonLabel;
+
     private const string apiEndpoint = "https://autecologic-uncoordinately-kellee.ngrok-free.dev/agent";
 
     void Start()
     {
-        InitializeController();
         if (statusText != null)
             statusText.text = "Idle";
     }
 
-    void InitializeController()
-    {
-        var rightHandedControllers = new List<InputDevice>();
-        InputDevices.GetDevicesAtXRNode(XRNode.RightHand, rightHandedControllers);
-
-        if (rightHandedControllers.Count > 0)
-        {
-            rightController = rightHandedControllers[0];
-            Debug.Log("Right controller found: " + rightController.name);
-        }
-        else
-        {
-            Debug.LogError("Right controller not found!");
-        }
-    }
-
-    void Update()
-    {
-        if (!rightController.isValid)
-        {
-            // Attempt to re-initialize if controller is lost
-            InitializeController();
-            return;
-        }
-
-        // Check for B button press
-        if (rightController.TryGetFeatureValue(CommonUsages.secondaryButton, out bool bButtonValue))
-        {
-            if (bButtonValue && !buttonPressed)
-            {
-                buttonPressed = true;
-                ToggleRecording();
-            }
-            else if (!bButtonValue && buttonPressed)
-            {
-                buttonPressed = false; // Reset when button released
-            }
-        }
-    }
-
-    void ToggleRecording()
+    public void ToggleRecording()
     {
         isRecording = !isRecording;
         micController.ToggleRecording();
 
         if (isRecording)
         {
-            // Started recording
-            if (statusText != null)
-                statusText.text = "Recording...";
-            Debug.Log("Recording started.");
+            if (statusText != null) statusText.text = "Recording...";
+            if (buttonLabel != null) buttonLabel.text = "Stop";
+            Debug.Log("🎙Recording started.");
         }
         else
         {
-            // Stopped recording
             Debug.Log("Recording stopped. Preparing to send data.");
-            if (statusText != null)
-                statusText.text = "Processing...";
-            
-            // Get the recorded audio clip from the controller
+            if (statusText != null) statusText.text = "Processing...";
+            if (buttonLabel != null) buttonLabel.text = "Ask";
+
             AudioClip clipToSend = micController.recordedClip;
-            
+
             if (clipToSend != null)
             {
-                // Start the process of encoding and sending the data
                 StartCoroutine(SendAudioRequest(clipToSend));
             }
             else
             {
                 Debug.LogError("Recorded AudioClip is null!");
-                if (statusText != null)
-                    statusText.text = "Error: No Clip";
+                if (statusText != null) statusText.text = "Error: No Clip";
             }
         }
     }
 
     IEnumerator SendAudioRequest(AudioClip clip)
     {
-        // 1. Convert AudioClip to WAV byte array
+        // 1. Convert AudioClip to WAV
         byte[] wavData = ConvertAudioClipToWav(clip);
         if (wavData == null)
         {
@@ -117,27 +71,51 @@ public class VRMicRecorder : MonoBehaviour
             yield break;
         }
 
-        // 2. Encode WAV byte array to Base64 string
+        // 2. Encode to Base64
         string base64Audio = System.Convert.ToBase64String(wavData);
 
-        // 3. Construct the JSON payload with appropriate context
-        // Note: The backslashes are used to escape the quotes inside the string
+        // 3. Construct JSON payload with corrected event definitions
         string jsonPayload = $@"
         {{
             ""user_message"": ""{base64Audio}"",
             ""scene_context"": ""A cozy living room with white walls"",
             ""event_definitions"": [
-                {{""name"": ""SetLightState"", ""parameters"": {{""area"": ""string"", ""state"": ""boolean or string (on/off)""}}}},
-                {{""name"": ""SetLightIntensity"", ""parameters"": {{""area"": ""string"", ""intensity"": ""float""}}}},
-                {{""name"": ""SetWallColor"", ""parameters"": {{""area"": ""string"", ""color"": ""string (hex codes)""}}}},
-                {{""name"": ""AddPlant"", ""parameters"": {{""area"": ""string"", ""plantType"": ""string"", ""position"": ""string""}}}},
-                {{""name"": ""RemovePlant"", ""parameters"": {{""area"": ""string"", ""plantType"": ""string""}}}},
-                {{""name"": ""TogglePlant"", ""parameters"": {{""area"": ""string"", ""add"": ""boolean"", ""plantType"": ""string""}}}}
+                {{
+                    ""name"": ""SetLightState"",
+                    ""parameters"": {{
+                        ""area"": ""Studyroom, Bedroom, Livingroom, Kitchen"",
+                        ""state"": ""true/false""
+                    }}
+                }},
+                {{
+                    ""name"": ""SetLightIntensity"",
+                    ""parameters"": {{
+                        ""area"": ""Studyroom, Bedroom, Livingroom, Kitchen"",
+                        ""intensity"": ""float""
+                    }}
+                }},
+                {{
+                    ""name"": ""SetWallColor"",
+                    ""parameters"": {{
+                        ""area"": ""Bedroom, Bathroom, Livingroom, Studyroom, Kitchen, Diningroom"",
+                        ""color"": ""#RRGGBB""
+                    }}
+                }},
+                {{
+                    ""name"": ""TogglePlant"",
+                    ""parameters"": {{
+                        ""area"": ""Balcony, Bedroom, Livingroom, DiningRoom"",
+                        ""active"": ""true/false""
+                    }}
+                }}
             ],
             ""chat_event_history"": """"
         }}";
 
-        // 4. Send the POST request
+        // 🔹 Debug log payload
+        Debug.Log("📤 Sending JSON payload:\n" + jsonPayload);
+
+        // 4. Send POST request
         using (UnityWebRequest request = new UnityWebRequest(apiEndpoint, "POST"))
         {
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
@@ -145,28 +123,26 @@ public class VRMicRecorder : MonoBehaviour
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
 
-            if (statusText != null)
-                statusText.text = "Sending...";
+            if (statusText != null) statusText.text = "Sending...";
 
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("Successfully sent audio data!");
                 string responseText = request.downloadHandler.text;
-                Debug.Log("Response: " + responseText);
 
-                // Pass the full response to the EventDispatcher to trigger scene changes
+                // 🔹 Debug log backend response
+                Debug.Log("Backend response:\n" + responseText);
+
                 if (eventDispatcher != null)
                 {
                     eventDispatcher.ProcessBackendResponse(responseText);
                 }
                 else
                 {
-                    Debug.LogWarning("EventDispatcher is not assigned in the inspector.");
+                    Debug.LogWarning("⚠EventDispatcher is not assigned in the inspector.");
                 }
 
-                // Separately, parse the response to display the friendly text on the UI
                 if (statusText != null)
                 {
                     try
@@ -178,52 +154,46 @@ public class VRMicRecorder : MonoBehaviour
                         }
                         else
                         {
-                            statusText.text = "Response Processed"; // Fallback message
+                            statusText.text = "Response Processed";
                         }
                     }
                     catch (System.Exception e)
                     {
-                        Debug.LogError($"Failed to parse backend response JSON for UI: {e.Message}");
-                        statusText.text = "Action Performed"; // Fallback on JSON parse error
+                        Debug.LogError($"Failed to parse backend response JSON: {e.Message}");
+                        statusText.text = "Action Performed";
                     }
                 }
             }
             else
             {
                 Debug.LogError("Error sending request: " + request.error);
-                if (statusText != null)
-                    statusText.text = "Error: " + request.responseCode;
+                if (statusText != null) statusText.text = "Error: " + request.responseCode;
             }
         }
     }
-    
+
     #region Audio Conversion Helper
-    
-    // This helper function converts a Unity AudioClip into a byte array in WAV format.
     private byte[] ConvertAudioClipToWav(AudioClip clip)
     {
         if (clip == null) return null;
 
         using (var memoryStream = new MemoryStream())
         {
-            // WAV header
             memoryStream.Write(Encoding.ASCII.GetBytes("RIFF"), 0, 4);
-            memoryStream.Write(new byte[4], 0, 4); // Placeholder for file size
+            memoryStream.Write(new byte[4], 0, 4);
             memoryStream.Write(Encoding.ASCII.GetBytes("WAVE"), 0, 4);
             memoryStream.Write(Encoding.ASCII.GetBytes("fmt "), 0, 4);
-            memoryStream.Write(System.BitConverter.GetBytes(16), 0, 4); // Sub-chunk size
-            memoryStream.Write(System.BitConverter.GetBytes((ushort)1), 0, 2); // Audio format (1 for PCM)
+            memoryStream.Write(System.BitConverter.GetBytes(16), 0, 4);
+            memoryStream.Write(System.BitConverter.GetBytes((ushort)1), 0, 2);
             memoryStream.Write(System.BitConverter.GetBytes(clip.channels), 0, 2);
             memoryStream.Write(System.BitConverter.GetBytes(clip.frequency), 0, 4);
-            memoryStream.Write(System.BitConverter.GetBytes(clip.frequency * clip.channels * 2), 0, 4); // Byte rate
-            memoryStream.Write(System.BitConverter.GetBytes((ushort)(clip.channels * 2)), 0, 2); // Block align
-            memoryStream.Write(System.BitConverter.GetBytes((ushort)16), 0, 2); // Bits per sample
+            memoryStream.Write(System.BitConverter.GetBytes(clip.frequency * clip.channels * 2), 0, 4);
+            memoryStream.Write(System.BitConverter.GetBytes((ushort)(clip.channels * 2)), 0, 2);
+            memoryStream.Write(System.BitConverter.GetBytes((ushort)16), 0, 2);
 
-            // Data chunk
             memoryStream.Write(Encoding.ASCII.GetBytes("data"), 0, 4);
-            memoryStream.Write(new byte[4], 0, 4); // Placeholder for data size
+            memoryStream.Write(new byte[4], 0, 4);
 
-            // Audio data
             float[] samples = new float[clip.samples * clip.channels];
             clip.GetData(samples, 0);
 
@@ -234,7 +204,6 @@ public class VRMicRecorder : MonoBehaviour
                 memoryStream.Write(byteSample, 0, 2);
             }
 
-            // Fill in placeholders
             long fileSize = memoryStream.Length;
             memoryStream.Seek(4, SeekOrigin.Begin);
             memoryStream.Write(System.BitConverter.GetBytes((int)(fileSize - 8)), 0, 4);
@@ -244,7 +213,5 @@ public class VRMicRecorder : MonoBehaviour
             return memoryStream.ToArray();
         }
     }
-    
     #endregion
 }
-

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Depends on Newtonsoft.Json
 public class EventDispatcher : MonoBehaviour
 {
     public LightManager lightManager;
@@ -22,10 +21,7 @@ public class EventDispatcher : MonoBehaviour
             { "SetLightState", HandleSetLightState },
             { "SetLightIntensity", HandleSetLightIntensity },
             { "SetWallColor", HandleSetWallColor },
-            { "AddPlant", HandleAddPlant },
-            { "RemovePlant", HandleRemovePlant },
-            { "TogglePlant", HandleTogglePlant }
-            // add more event name -> handler pairs here
+            { "TogglePlant", HandleTogglePlant } // unified handler
         };
     }
 
@@ -60,14 +56,8 @@ public class EventDispatcher : MonoBehaviour
 
             if (handlers.TryGetValue(ev.name, out var handler))
             {
-                try
-                {
-                    handler.Invoke(paramDict);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Error executing handler for {ev.name}: {ex}");
-                }
+                try { handler.Invoke(paramDict); }
+                catch (Exception ex) { Debug.LogError($"Error executing handler for {ev.name}: {ex}"); }
             }
             else
             {
@@ -81,7 +71,7 @@ public class EventDispatcher : MonoBehaviour
     private void HandleSetLightState(Dictionary<string, object> p)
     {
         if (!TryGetString(p, "area", out string area)) return;
-        if (!TryGetBoolOrStringBool(p, "state", out bool state)) return; // accepts true/false or "on"/"off"
+        if (!TryGetBoolOrStringBool(p, "state", out bool state)) return;
         lightManager.SetLightsState(area, state);
     }
 
@@ -99,37 +89,24 @@ public class EventDispatcher : MonoBehaviour
         wallManager.SetWallColor(area, hex);
     }
 
-    private void HandleAddPlant(Dictionary<string, object> p)
-    {
-        if (!TryGetString(p, "area", out string area)) return;
-        // optional: plantType, position
-        p.TryGetValue("plantType", out object plantTypeObj);
-        p.TryGetValue("position", out object posObj);
-        string plantType = plantTypeObj?.ToString();
-        string position = posObj?.ToString();
-        plantManager.AddPlant(area, plantType, position);
-    }
-
-    private void HandleRemovePlant(Dictionary<string, object> p)
-    {
-        if (!TryGetString(p, "area", out string area)) return;
-        // optional id or plantType
-        p.TryGetValue("plantType", out object plantTypeObj);
-        string plantType = plantTypeObj?.ToString();
-        plantManager.RemovePlant(area, plantType);
-    }
-
     private void HandleTogglePlant(Dictionary<string, object> p)
     {
         if (!TryGetString(p, "area", out string area)) return;
-        if (!TryGetBool(p, "add", out bool add)) return;
-        p.TryGetValue("plantType", out object plantTypeObj);
-        string plantType = plantTypeObj?.ToString();
-        if (add) plantManager.AddPlant(area, plantType, null);
-        else plantManager.RemovePlant(area, plantType);
+
+        // Accept both "add" and "active"
+        bool active;
+        if (TryGetBool(p, "add", out active) || TryGetBool(p, "active", out active))
+        {
+            plantManager.SetPlantsActive(area, active);
+        }
+        else
+        {
+            Debug.LogWarning("TogglePlant event missing 'add' or 'active' parameter.");
+        }
     }
 
-    // ---- helpers for safe conversion ----
+
+    // ---- helpers ----
 
     private bool TryGetString(Dictionary<string, object> p, string key, out string value)
     {
