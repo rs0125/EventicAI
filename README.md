@@ -2,6 +2,11 @@
 
 **Eventic AI** is a plug-and-play Unity SDK that transforms static environments into fully interactive, voice-driven experiences. By bridging the gap between Natural Language Processing (NLP) and Unity’s event system, Eventic AI allows players to manipulate the world—changing lights, repainting walls, or toggling objects—simply by speaking.
 
+https://github.com/user-attachments/assets/de28a6df-59ee-404c-a3a8-8ddf98336804
+
+https://github.com/user-attachments/assets/0c955c8e-6af4-4b39-a72a-f5e295f7e985
+
+
 ##  Features
 
 * **Natural Language Interactivity:** Move beyond hard-coded triggers; use voice or text to drive scene changes.
